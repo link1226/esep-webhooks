@@ -1,37 +1,37 @@
-using System;
-using System.Net.Http;
 using System.Text;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
 using Amazon.Lambda.Core;
+using Newtonsoft.Json;
+
+// Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
+[assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
+
+namespace EsepWebhook;
 
 public class Function
 {
-    private static readonly HttpClient client = new HttpClient();
-
-    public async Task<string> FunctionHandler(dynamic input, ILambdaContext context)
+    
+    /// <summary>
+    /// A simple function that takes a string and does a ToUpper
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="context"></param>
+    /// <returns></returns>
+    public string FunctionHandler(object input, ILambdaContext context)
     {
-        // Get Slack URL from environment variable
-        string slackUrl = Environment.GetEnvironmentVariable("SLACK_URL");
+        context.Logger.LogInformation($"FunctionHandler received: {input}");
 
-        // Parse the GitHub webhook payload
-        string issueUrl = input.issue.html_url;
-        string issueTitle = input.issue.title;
-        string issueBody = input.issue.body;
-        string sender = input.sender.login;
-
-        // Construct the Slack message
-        var message = new { text = $"Issue created by {sender}: *<{issueUrl}|{issueTitle}>*\n{issueBody}" };
-        var content = new StringContent(JsonConvert.SerializeObject(message), Encoding.UTF8, "application/json");
-
-        // Send message to Slack
-        HttpResponseMessage response = await client.PostAsync(slackUrl, content);
+        dynamic json = JsonConvert.DeserializeObject<dynamic>(input.ToString());
+        string payload = $"{{'text':'Issue Created: {json.issue.html_url}'}}";
         
-        if (!response.IsSuccessStatusCode)
+        var client = new HttpClient();
+        var webRequest = new HttpRequestMessage(HttpMethod.Post, Environment.GetEnvironmentVariable("SLACK_URL"))
         {
-            return "Failed to send message to Slack";
-        }
-        
-        return "Message sent to Slack";
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+    
+        var response = client.Send(webRequest);
+        using var reader = new StreamReader(response.Content.ReadAsStream());
+            
+        return reader.ReadToEnd();
     }
 }
